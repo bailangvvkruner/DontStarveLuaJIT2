@@ -1,86 +1,164 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# List of processes to check
-processes=("dontstarve_steam_x64" "dontstarve_dedicated_server_nullrenderer_x64")
+set -Eeuo pipefail
 
-# Terminate running processes
-for process in "${processes[@]}"; do
-    pid=$(pgrep -f "$process")
-    if [ -n "$pid" ]; then
-        echo "[INFO] Terminating process: $process (PID: $pid)"
-        kill -INT "$pid"
-        sleep 1 # Wait for the process to fully terminate
+info() {
+    printf '[INFO] %s\n' "$*"
+}
+
+fail() {
+    printf '[ERROR] %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    cat <<'EOF'
+Usage:
+  ./install_linux.sh
+  ./install_linux.sh --game-dir "/path/to/Don't Starve Together"
+  ./install_linux.sh --bin-dir "/path/to/Don't Starve Together/bin64"
+
+The automatic mode supports mods installed below the game's mods directory,
+Steam Workshop, and the default Steam or dedicated-server locations.
+EOF
+}
+
+script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+source_dir="$script_dir/bin64/linux"
+bin_dir=""
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --game-dir)
+            [ "$#" -ge 2 ] || fail "--game-dir requires a path"
+            bin_dir="$2/bin64"
+            shift 2
+            ;;
+        --bin-dir)
+            [ "$#" -ge 2 ] || fail "--bin-dir requires a path"
+            bin_dir="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            fail "unknown argument: $1 (use --help for usage)"
+            ;;
+    esac
+done
+
+detect_bin_dir() {
+    local candidate
+
+    case "$script_dir" in
+        */steamapps/workshop/content/322330/*)
+            candidate="${script_dir%%/steamapps/workshop/content/322330/*}/steamapps/common/Don't Starve Together/bin64"
+            if [ -d "$candidate" ]; then
+                printf '%s\n' "$candidate"
+                return 0
+            fi
+            ;;
+        */mods/*)
+            candidate="${script_dir%%/mods/*}/bin64"
+            if [ -d "$candidate" ]; then
+                printf '%s\n' "$candidate"
+                return 0
+            fi
+            ;;
+    esac
+
+    for candidate in \
+        "$HOME/.steam/steam/steamapps/common/Don't Starve Together/bin64" \
+        "$HOME/.local/share/Steam/steamapps/common/Don't Starve Together/bin64" \
+        "$HOME/server_dst/bin64"
+    do
+        if [ -d "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+if [ -z "$bin_dir" ]; then
+    bin_dir="$(detect_bin_dir)" || fail \
+        "could not locate the game. Re-run with --game-dir or --bin-dir."
+fi
+
+[ -d "$source_dir" ] || fail "release files are missing: $source_dir"
+[ -f "$source_dir/lib64/libInjector.so" ] || fail \
+    "libInjector.so is missing. Use a packaged Linux release or build the install target first."
+[ -d "$bin_dir" ] || fail "game bin64 directory does not exist: $bin_dir"
+
+bin_dir="$(CDPATH='' cd -- "$bin_dir" && pwd -P)"
+
+host_glibc="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{ print $2 }' || true)"
+required_glibc="$({
+    LC_ALL=C grep -ahoE 'GLIBC_[0-9]+(\.[0-9]+)+' "$source_dir"/lib64/* 2>/dev/null || true
+} | sed 's/^GLIBC_//' | sort -Vu | tail -n 1)"
+
+if [ -n "$host_glibc" ] && [ -n "$required_glibc" ]; then
+    newest="$(printf '%s\n%s\n' "$host_glibc" "$required_glibc" | sort -V | tail -n 1)"
+    if [ "$newest" = "$required_glibc" ] && [ "$host_glibc" != "$required_glibc" ]; then
+        fail "this package requires GLIBC_$required_glibc, but the host provides GLIBC_$host_glibc. Use the Debian-compatible release; do not replace Debian's libc manually."
+    fi
+fi
+
+info "Installing Linux files into: $bin_dir"
+cp -a -- "$source_dir/." "$bin_dir/"
+
+is_elf() {
+    [ "$(od -An -tx1 -N4 "$1" 2>/dev/null | tr -d '[:space:]')" = "7f454c46" ]
+}
+
+write_launcher() {
+    local name="$1"
+    local launcher="$bin_dir/$name"
+    local original="$bin_dir/${name}_1"
+
+    if [ -f "$launcher" ] && is_elf "$launcher"; then
+        mv -f -- "$launcher" "$original"
+        info "Backed up the game executable as ${name}_1"
+    elif [ -f "$launcher" ] && grep -q '^# DontStarveLuaJIT launcher$' "$launcher"; then
+        [ -f "$original" ] || fail "launcher backup is missing: $original"
+    elif [ -f "$launcher" ] && head -n 1 "$launcher" | grep -q '^#!' && [ -f "$original" ]; then
+        info "Updating an existing launcher: $name"
+    elif [ ! -f "$launcher" ] && [ -f "$original" ]; then
+        info "Restoring launcher for existing backup: ${name}_1"
+    elif [ ! -f "$launcher" ]; then
+        return 1
+    else
+        fail "refusing to replace an unknown launcher: $launcher"
+    fi
+
+    cat > "$launcher" <<EOF
+#!/usr/bin/env bash
+# DontStarveLuaJIT launcher
+set -e
+SCRIPT_DIR="\$(CDPATH='' cd -- "\$(dirname -- "\$0")" && pwd -P)"
+cd "\$SCRIPT_DIR"
+export LD_LIBRARY_PATH="\$SCRIPT_DIR/lib64\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"
+export LD_PRELOAD="\$SCRIPT_DIR/lib64/libInjector.so\${LD_PRELOAD:+ \$LD_PRELOAD}"
+exec "\$SCRIPT_DIR/${name}_1" "\$@"
+EOF
+
+    chmod +x -- "$launcher" "$original"
+    return 0
+}
+
+installed=0
+for executable in \
+    dontstarve_steam_x64 \
+    dontstarve_dedicated_server_nullrenderer_x64
+do
+    if write_launcher "$executable"; then
+        installed=$((installed + 1))
     fi
 done
 
-# Set path variables
-source="bin64/linux"
-current_dir=$(pwd)
+[ "$installed" -gt 0 ] || fail "no supported Don't Starve Together executable was found in $bin_dir"
 
-if echo "$current_dir" | grep -q "workshop/content/322330"; then
-    destination="../../../../common/Don't Starve Together/bin64"
-else
-    destination="../../bin64"
-fi
-
-# Verify if the source directory exists
-if [ ! -d "$source" ]; then
-    echo "[ERROR] Source directory does not exist: $source"
-    exit 1
-fi
-
-# Create the destination directory if it doesn't exist
-if [ ! -d "$destination" ]; then
-    echo "[ERROR] Destination directory does not exist: $destination"
-    exit 1
-fi
-
-# Move files
-echo "[INFO] Moving files..."
-cp -r "$source"/* "$destination/"
-
-# Check the result of the operation
-if [ $? -eq 0 ]; then
-    echo "[INFO] Files moved successfully"
-else
-    echo "[ERROR] An error occurred while moving files"
-    exit 1
-fi
-
-cd "$destination"
-
-if [ -f dontstarve_steam_x64 ] && [ $(stat -c%s dontstarve_steam_x64) -gt 1048576 ]; then
-    mv dontstarve_steam_x64 dontstarve_steam_x64_1
-
-    cat > dontstarve_steam_x64 <<'EOF'
-#!/bin/bash
-export LD_LIBRARY_PATH=./lib64
-export LD_PRELOAD=./lib64/libInjector.so
-./dontstarve_steam_x64_1
-EOF
-
-    chmod +x dontstarve_steam_x64
-    echo "rewrite dontstarve_steam_x64 success"
-else
-    echo "skip rewrite dontstarve_steam_x64."
-fi
-
-if [ -f dontstarve_dedicated_server_nullrenderer_x64 ] && [ $(stat -c%s dontstarve_dedicated_server_nullrenderer_x64) -gt 1048576 ]; then
-    mv dontstarve_dedicated_server_nullrenderer_x64 dontstarve_dedicated_server_nullrenderer_x64_1
-
-    cat > dontstarve_dedicated_server_nullrenderer_x64 <<'EOF'
-#!/bin/bash
-export LD_LIBRARY_PATH=./lib64
-export LD_PRELOAD=./lib64/libInjector.so
-./dontstarve_dedicated_server_nullrenderer_x64_1 "$@"
-EOF
-
-    chmod +x dontstarve_dedicated_server_nullrenderer_x64
-    echo "rewrite dontstarve_dedicated_server_nullrenderer_x64 success"
-else
-    echo "skip rewrite dontstarve_dedicated_server_nullrenderer_x64."
-fi
-
-
-echo "[INFO] Operation completed successfully"
-exit 0
+info "Installation completed successfully ($installed launcher(s) installed)."

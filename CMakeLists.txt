@@ -7,19 +7,23 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(GAME_NAME "Don't Starve Together")
-if (WIN32)
-    set(GAME_DIR "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Don't Starve Together")
-elseif (UNIX AND NOT APPLE)
-    set(GAME_DIR "/root/server_dst")
-elseif (APPLE)
-    set(GAME_DIR "/Users/fesil/Library/Application Support/Steam/steamapps/common/Don't Starve Together/dontstarve_steam.app/Contents")
+if (NOT DEFINED GAME_DIR)
+    if (WIN32)
+        set(GAME_DIR "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Don't Starve Together")
+    elseif (UNIX AND NOT APPLE)
+        set(GAME_DIR "/root/server_dst")
+    elseif (APPLE)
+        set(GAME_DIR "/Users/fesil/Library/Application Support/Steam/steamapps/common/Don't Starve Together/dontstarve_steam.app/Contents")
+    endif ()
 endif ()
 include(cmake/GameDir.cmake OPTIONAL)
 enable_testing()
 set(FRIDA_GUM_VERSION "17.5.1")
 set(VCPKG_INSTALL_OPTION "${VCPKG_INSTALL_OPTION} --x-abi-tools-use-exact-versions")
 
-file(REAL_PATH ${GAME_DIR} GAME_DIR)
+if (GAME_DIR)
+    file(REAL_PATH "${GAME_DIR}" GAME_DIR)
+endif ()
 
 set(PYTHON_EXECUTABLE_NAME "python3")
 set(VCPKG_TARGET_TRIPLET "x64-linux-release")
@@ -39,11 +43,18 @@ endif ()
 
 project(DontStarveLuaJIT VERSION 2.9.1)
 
+if (UNIX)
+    find_package(Threads REQUIRED)
+endif ()
+
 message(STATUS "CMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}")
 message(STATUS "VCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}")
 message(STATUS "VCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR}")
 
 option(DISABLE_TRACY_FUTURE "disable tray future" ON)
+option(DONTSTARVE_STATIC_LIBSTDCXX
+       "Statically link libstdc++ into the Linux injector for distro compatibility"
+       ON)
 
 set(CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_SOURCE_DIR}/Mod)
 set(TARGET_MOD_DIR ${CMAKE_INSTALL_PREFIX})

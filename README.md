@@ -84,6 +84,8 @@
 ### 方法 1（自动安装）
 - 直接运行Luajit文件夹内的`install.bat` (Windows系统) / `install_linux.sh` (Linux系统)
 - 运行`install_linux.sh`前可能需要先执行`chmod +x ./install_linux.sh`赋予权限
+- 如果脚本无法自动找到游戏目录，可显式指定：
+  `./install_linux.sh --game-dir "/path/to/Don't Starve Together"`
 
 ### 方法 2（手动安装）
 
@@ -95,17 +97,28 @@
 
 #### Linux
 
-我只在 ubuntu 上测试过，但如果有人能提供 steamos 环境，我也可以在 steamos 上测试，哈哈！
+Linux 发布包以 glibc 2.28 为兼容基线，支持 x86_64 Debian 10 及更新版本。
+如果启动时出现 `GLIBC_2.38 not found` 或 `GLIBCXX_3.4.32 not found`，说明使用的是旧的 Ubuntu 24.04 构建包；请改用包含 Debian 兼容修复的新版本，或在 Debian 上重新编译。不要手动替换系统 glibc。
+
+从源码构建 Debian 兼容包时，安装 Docker 后在仓库根目录执行：
+
+```bash
+bash tools/build_linux_compatible.sh
+```
+
+构建产物会写入 `Mod/bin64/linux`。
 
 - 将 `Luajit/bin64/linux` 文件夹内所有文件`复制`到`游戏目录`下的 `bin64`文件夹中
 - 将原始游戏可执行文件 `dontstarve_steam_x64` 重命名为 `dontstarve_steam_x64_1`
 - 创建内容为 `dontstarve_steam_x64` 的新文件：
 
 ```bash
-#!/bin/bash
-export LD_LIBRARY_PATH=./lib64
-export LD_PRELOAD=./lib64/libInjector.so
-./dontstarve_steam_x64_1 "$@"
+#!/usr/bin/env bash
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)"
+cd "$SCRIPT_DIR"
+export LD_LIBRARY_PATH="$SCRIPT_DIR/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_PRELOAD="$SCRIPT_DIR/lib64/libInjector.so${LD_PRELOAD:+ $LD_PRELOAD}"
+exec "$SCRIPT_DIR/dontstarve_steam_x64_1" "$@"
 ```
 
 - 运行 shell `chmod +x ./dontstarve_steam_x64`

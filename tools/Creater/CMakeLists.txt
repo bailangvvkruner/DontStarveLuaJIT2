@@ -61,6 +61,9 @@ target_include_directories(signature_updater PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_include_directories(signature_updater PUBLIC ${DONTSTARVEINJECTOR_UTIL_DIR})
 target_include_directories(signature_updater PUBLIC ${DONTSTARVEINJECTOR_ROOT})
 target_link_libraries(signature_updater PRIVATE spdlog::spdlog)
+if (UNIX)
+    target_link_libraries(signature_updater PRIVATE Threads::Threads)
+endif ()
 
 
 target_include_directories(signature_updater PUBLIC ${FRIDA_GUM_INCLUDE_DIR})

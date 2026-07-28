@@ -121,6 +121,9 @@ target_link_libraries(Injector PRIVATE nlohmann_json::nlohmann_json)
 target_link_libraries(Injector PRIVATE spdlog::spdlog)
 target_link_libraries(Injector PRIVATE range-v3::meta range-v3::concepts range-v3::range-v3)
 target_link_libraries(Injector PRIVATE SLikeNet)
+if (UNIX)
+    target_link_libraries(Injector PRIVATE Threads::Threads)
+endif ()
 if (WIN32)
     target_link_libraries(Injector PRIVATE
         unofficial::angle::libGLESv2
@@ -153,6 +156,14 @@ endif ()
 
 if (MSVC)
     target_link_options(Injector PUBLIC "/NODEFAULTLIB:LIBCMT")
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux"
+        AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
+        AND DONTSTARVE_STATIC_LIBSTDCXX)
+    # The release is preloaded into the game process, so it cannot assume the
+    # host distribution ships the same GCC runtime as the build machine.
+    target_link_options(Injector PRIVATE
+        -static-libstdc++
+        "LINKER:--exclude-libs,libstdc++.a")
 endif ()
 
 if (ENABLE_FAKE_API)

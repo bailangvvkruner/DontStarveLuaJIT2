@@ -36,29 +36,39 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/.vcpkg-bincache
-          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakeLists.txt', 'cmake/custom-triplets/**', 'cmake/ports/**') }}
+          key: ${{ runner.os }}-${{ matrix.target == 'linux' && 'manylinux_2_28' || 'native' }}-vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakeLists.txt', 'cmake/custom-triplets/**', 'cmake/ports/**') }}
       - name: Initialize MSVC developer environment
         if: ${{ matrix.target == 'windows' }}
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64
       - uses: lukka/get-cmake@latest
+        if: ${{ matrix.target != 'linux' }}
         with:
           cmakeVersion: 3.31.6     # <--= optional, stick to exactly 3.25.2 version
           ninjaVersion: 1.11.1     # <--= optional, stick to exactly 1.11.1 version
       - uses: actions/setup-python@v5
+        if: ${{ matrix.target != 'linux' }}
         with:
           python-version: '3.13' 
       - name: Restore from cache and setup vcpkg executable and data files.
+        if: ${{ matrix.target != 'linux' }}
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgJsonGlob: 'vcpkg.json'
 
       - name: Configure CMake and populate vcpkg binary cache
+        if: ${{ matrix.target != 'linux' }}
         uses: lukka/run-cmake@v10
         with:
           configurePreset: 'ninja-multi-vcpkg'
           configurePresetAdditionalArgs: "['-DCMAKE_OSX_ARCHITECTURES=x86_64']"
+
+      - name: Build Linux release with a Debian-compatible ABI
+        if: ${{ matrix.target == 'linux' }}
+        shell: bash
+        run: |
+          bash tools/build_linux_compatible.sh
 
       - name: Save vcpkg binary cache
         if: ${{ always() && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
@@ -68,10 +78,12 @@ jobs:
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       - name: Build
+        if: ${{ matrix.target != 'linux' }}
         run: |
           cmake --build ./builds/ninja-multi-vcpkg --config RelWithDebInfo
 
       - name: CMake install
+        if: ${{ matrix.target != 'linux' }}
         run: |
           cmake --build ./builds/ninja-multi-vcpkg --config RelWithDebInfo --target install
 

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+repo_root="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+image="${MANYLINUX_IMAGE:-quay.io/pypa/manylinux_2_28_x86_64:latest}"
+
+command -v docker >/dev/null 2>&1 || {
+    printf 'error: Docker is required to build the portable Linux release.\n' >&2
+    exit 1
+}
+
+docker run --rm \
+    --volume "$repo_root:/workspace" \
+    --workdir /workspace \
+    --env "CI=${CI:-}" \
+    --env "GITHUB_ACTIONS=${GITHUB_ACTIONS:-}" \
+    "$image" \
+    bash -lc '
+        set -euo pipefail
+        owner="$(stat -c "%u:%g" /workspace)"
+        cleanup() {
+            chown -R "$owner" /workspace/builds /workspace/Mod /workspace/.vcpkg-bincache 2>/dev/null || true
+        }
+        trap cleanup EXIT
+
+        dnf install -y ninja-build pkgconf-pkg-config zip
+        export PATH="/opt/python/cp313-cp313/bin:$PATH"
+        export VCPKG_DEFAULT_BINARY_CACHE=/workspace/.vcpkg-bincache
+        export VCPKG_BINARY_SOURCES="clear;files,/workspace/.vcpkg-bincache,readwrite"
+
+        bash ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+        cmake --preset ninja-multi-vcpkg -DGAME_DIR=OFF -DDONTSTARVE_STATIC_LIBSTDCXX=ON
+        cmake --build ./builds/ninja-multi-vcpkg --config RelWithDebInfo
+        cmake --build ./builds/ninja-multi-vcpkg --config RelWithDebInfo --target install
+        python3 tools/check_linux_elf_compat.py \
+            Mod/bin64/linux/lib64 \
+            --max-glibc 2.28 \
+            --forbid-needed libstdc++.so.6
+    '

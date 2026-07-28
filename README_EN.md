@@ -50,6 +50,12 @@ Run `install.bat` (windows) or `./install_linux.sh` inside the mod's folder.
 
 `./install_linux.sh` may need `chmod +x install_linux.sh`
 
+If automatic discovery does not find the game, pass its path explicitly:
+
+```bash
+./install_linux.sh --game-dir "/path/to/Don't Starve Together"
+```
+
 ## 2. Injector:
 
 ### Windows
@@ -66,17 +72,22 @@ print(jit)
 
 ### Linux
 
-I've only tested it on Ubuntu, but I can also test it on SteamOS if someone can help me with the SteamOS environment.
+Linux release binaries target glibc 2.28 and support x86_64 Debian 10 and newer.
+If startup reports `GLIBC_2.38 not found` or `GLIBCXX_3.4.32 not found`,
+you have an older Ubuntu 24.04 build. Use a release containing the Debian
+compatibility fix or rebuild on Debian. Do not replace the system glibc.
 
 - Copy all `bin64/linux` files to the `bin64` folder in the game directory, including the files outside `lib64`, such as `signatures_*.json`.
 - Rename original game executable `dontstarve_steam_x64` to `dontstarve_steam_x64_1`
 - Create new file `dontstarve_steam_x64` with the content:
 
 ```bash
-#!/bin/bash
-export LD_LIBRARY_PATH=./lib64
-export LD_PRELOAD=./lib64/libInjector.so
-./dontstarve_steam_x64_1
+#!/usr/bin/env bash
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)"
+cd "$SCRIPT_DIR"
+export LD_LIBRARY_PATH="$SCRIPT_DIR/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_PRELOAD="$SCRIPT_DIR/lib64/libInjector.so${LD_PRELOAD:+ $LD_PRELOAD}"
+exec "$SCRIPT_DIR/dontstarve_steam_x64_1" "$@"
 ```
 
 - Run the command `chmod +x ./dontstarve_steam_x64`
@@ -166,6 +177,18 @@ for i = 0, 255 do
 
 # Compilation
 
+## Linux portable build
+
+To create a Debian-compatible Linux package from source, install Docker and
+run this from the repository root:
+
+```bash
+bash tools/build_linux_compatible.sh
+```
+
+The script builds in a manylinux 2.28 container and writes the package to
+`Mod/bin64/linux`.
+
 ## Dependencies
 
 - Install `CMake` and `Ninja`
@@ -184,7 +207,9 @@ Need vs2008 compiler the lua51.dll. You can also use the one in the Mod.
 
 ### Linux
 
-Docker Ubuntu 24.04
+The release workflow builds in a manylinux 2.28 container and statically links
+libstdc++ into the injector. This keeps the packaged binaries compatible with
+Debian 10+ while retaining a modern C++23 compiler.
 
 ### MacOS
 
