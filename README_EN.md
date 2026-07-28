@@ -46,14 +46,14 @@ Note that on dedicated servers, the `Disable JIT on Server` option in the settin
 
 ### Automated install:
 
-Run `install.bat` (windows) or `./install_linux.sh` inside the mod's folder.
+Run `install.bat` (Windows) or `./install_dst_luajit.sh` (Linux) inside the mod's folder.
 
-`./install_linux.sh` may need `chmod +x install_linux.sh`
+`./install_dst_luajit.sh` may need `chmod +x install_dst_luajit.sh`
 
 If automatic discovery does not find the game, pass its path explicitly:
 
 ```bash
-./install_linux.sh --game-dir "/path/to/Don't Starve Together"
+./install_dst_luajit.sh --game-dir "/path/to/Don't Starve Together"
 ```
 
 ## 2. Injector:

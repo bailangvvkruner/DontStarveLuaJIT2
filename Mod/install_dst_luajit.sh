@@ -14,18 +14,26 @@ fail() {
 usage() {
     cat <<'EOF'
 Usage:
-  ./install_linux.sh
-  ./install_linux.sh --game-dir "/path/to/Don't Starve Together"
-  ./install_linux.sh --bin-dir "/path/to/Don't Starve Together/bin64"
+  ./install_dst_luajit.sh
+  ./install_dst_luajit.sh --game-dir /path/to/dst-dedicated-server
+  ./install_dst_luajit.sh --bin-dir /path/to/dst-dedicated-server/bin64
 
-The automatic mode supports mods installed below the game's mods directory,
-Steam Workshop, and the default Steam or dedicated-server locations.
+With no arguments, the installer detects common dedicated-server, Steam,
+dst-admin-go, mods, and ugc_mods locations automatically.
 EOF
 }
 
 script_dir="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 source_dir="$script_dir/bin64/linux"
 bin_dir=""
+stage_dir=""
+
+cleanup() {
+    if [ -n "$stage_dir" ] && [ -d "$stage_dir" ]; then
+        rm -rf -- "$stage_dir"
+    fi
+}
+trap cleanup EXIT
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -49,35 +57,52 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
+is_game_bin_dir() {
+    local candidate="$1"
+
+    [ -d "$candidate" ] || return 1
+    [ -f "$candidate/dontstarve_dedicated_server_nullrenderer_x64" ] ||
+        [ -f "$candidate/dontstarve_steam_x64" ]
+}
+
+print_candidate() {
+    local candidate="$1"
+
+    if is_game_bin_dir "$candidate"; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+    return 1
+}
+
 detect_bin_dir() {
     local candidate
 
     case "$script_dir" in
         */steamapps/workshop/content/322330/*)
             candidate="${script_dir%%/steamapps/workshop/content/322330/*}/steamapps/common/Don't Starve Together/bin64"
-            if [ -d "$candidate" ]; then
-                printf '%s\n' "$candidate"
-                return 0
-            fi
+            print_candidate "$candidate" && return 0
+            ;;
+        */ugc_mods/*/content/322330/*)
+            candidate="${script_dir%%/ugc_mods/*}/bin64"
+            print_candidate "$candidate" && return 0
             ;;
         */mods/*)
             candidate="${script_dir%%/mods/*}/bin64"
-            if [ -d "$candidate" ]; then
-                printf '%s\n' "$candidate"
-                return 0
-            fi
+            print_candidate "$candidate" && return 0
             ;;
     esac
 
     for candidate in \
+        "$HOME/dst-dedicated-server/bin64" \
+        "$HOME/server_dst/bin64" \
         "$HOME/.steam/steam/steamapps/common/Don't Starve Together/bin64" \
         "$HOME/.local/share/Steam/steamapps/common/Don't Starve Together/bin64" \
-        "$HOME/server_dst/bin64"
+        /app/dst-dedicated-server/bin64 \
+        /opt/dst-dedicated-server/bin64 \
+        /srv/dst-dedicated-server/bin64
     do
-        if [ -d "$candidate" ]; then
-            printf '%s\n' "$candidate"
-            return 0
-        fi
+        print_candidate "$candidate" && return 0
     done
 
     return 1
@@ -85,15 +110,17 @@ detect_bin_dir() {
 
 if [ -z "$bin_dir" ]; then
     bin_dir="$(detect_bin_dir)" || fail \
-        "could not locate the game. Re-run with --game-dir or --bin-dir."
+        "could not locate DST. Re-run with --game-dir or --bin-dir."
 fi
 
 [ -d "$source_dir" ] || fail "release files are missing: $source_dir"
 [ -f "$source_dir/lib64/libInjector.so" ] || fail \
-    "libInjector.so is missing. Use a packaged Linux release or build the install target first."
+    "libInjector.so is missing. Download linux_Mod.zip; do not run an installer from source or an old Workshop package."
 [ -d "$bin_dir" ] || fail "game bin64 directory does not exist: $bin_dir"
 
 bin_dir="$(CDPATH='' cd -- "$bin_dir" && pwd -P)"
+is_game_bin_dir "$bin_dir" || fail "no supported DST executable was found in $bin_dir"
+game_dir="${bin_dir%/bin64}"
 
 host_glibc="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{ print $2 }' || true)"
 required_glibc="$({
@@ -103,11 +130,33 @@ required_glibc="$({
 if [ -n "$host_glibc" ] && [ -n "$required_glibc" ]; then
     newest="$(printf '%s\n%s\n' "$host_glibc" "$required_glibc" | sort -V | tail -n 1)"
     if [ "$newest" = "$required_glibc" ] && [ "$host_glibc" != "$required_glibc" ]; then
-        fail "this package requires GLIBC_$required_glibc, but the host provides GLIBC_$host_glibc. Use the Debian-compatible release; do not replace Debian's libc manually."
+        fail "package requires GLIBC_$required_glibc, but the host provides GLIBC_$host_glibc. Use the Debian-compatible release; do not replace libc manually."
     fi
 fi
 
-info "Installing Linux files into: $bin_dir"
+install_mod_files() {
+    local mod_dir="$game_dir/mods/DontStarveLuaJIT2"
+
+    case "$script_dir/" in
+        "$game_dir/mods/"*|"$game_dir/ugc_mods/"*)
+            return 0
+            ;;
+    esac
+
+    mkdir -p -- "$game_dir/mods"
+    stage_dir="$(mktemp -d "$game_dir/mods/.DontStarveLuaJIT2.XXXXXX")"
+    cp -a -- "$script_dir/." "$stage_dir/"
+    rm -rf -- "$mod_dir"
+    mv -- "$stage_dir" "$mod_dir"
+    stage_dir=""
+    script_dir="$mod_dir"
+    source_dir="$script_dir/bin64/linux"
+    info "Installed Mod files into: $mod_dir"
+}
+
+install_mod_files
+
+info "Installing Linux runtime into: $bin_dir"
 cp -a -- "$source_dir/." "$bin_dir/"
 
 is_elf() {
@@ -124,8 +173,6 @@ write_launcher() {
         info "Backed up the game executable as ${name}_1"
     elif [ -f "$launcher" ] && grep -q '^# DontStarveLuaJIT launcher$' "$launcher"; then
         [ -f "$original" ] || fail "launcher backup is missing: $original"
-    elif [ -f "$launcher" ] && head -n 1 "$launcher" | grep -q '^#!' && [ -f "$original" ]; then
-        info "Updating an existing launcher: $name"
     elif [ ! -f "$launcher" ] && [ -f "$original" ]; then
         info "Restoring launcher for existing backup: ${name}_1"
     elif [ ! -f "$launcher" ]; then
@@ -159,6 +206,6 @@ do
     fi
 done
 
-[ "$installed" -gt 0 ] || fail "no supported Don't Starve Together executable was found in $bin_dir"
+[ "$installed" -gt 0 ] || fail "no supported DST executable was found in $bin_dir"
 
-info "Installation completed successfully ($installed launcher(s) installed)."
+info "Installation completed successfully ($installed launcher(s)). Start DST normally; dst-admin-go needs no command changes."

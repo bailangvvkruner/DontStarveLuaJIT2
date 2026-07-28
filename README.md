@@ -82,10 +82,10 @@
 ## 2.注入部分：
 
 ### 方法 1（自动安装）
-- 直接运行Luajit文件夹内的`install.bat` (Windows系统) / `install_linux.sh` (Linux系统)
-- 运行`install_linux.sh`前可能需要先执行`chmod +x ./install_linux.sh`赋予权限
+- 直接运行Luajit文件夹内的`install.bat` (Windows系统) / `install_dst_luajit.sh` (Linux系统)
+- 运行`install_dst_luajit.sh`前可能需要先执行`chmod +x ./install_dst_luajit.sh`赋予权限
 - 如果脚本无法自动找到游戏目录，可显式指定：
-  `./install_linux.sh --game-dir "/path/to/Don't Starve Together"`
+  `./install_dst_luajit.sh --game-dir "/path/to/Don't Starve Together"`
 
 ### 方法 2（手动安装）
 
@@ -102,7 +102,7 @@ Linux 发布包以 glibc 2.28 为兼容基线，支持 x86_64 Debian 10 及更�
 
 使用 `dst-admin-go` 面板或在 Debian/Ubuntu 裸机部署专用服务器，请阅读
 [Linux 专用服务器部署（面板与裸机）](Mod/README_LINUX.md)。推荐使用发布包内的
-`install_linux.sh`，不要只复制 `libInjector.so`。
+`install_dst_luajit.sh`，不要只复制 `libInjector.so`。
 
 从源码构建 Debian 兼容包时，安装 Docker 后在仓库根目录执行：
 
