@@ -126,5 +126,9 @@ protected:
 
 GameLuaContext &GetGameLuaContext();
 
+#ifdef __linux__
+void PreloadLuaModulesForInjector();
+#endif
+
 void ReplaceLuaApi(GameLuaType type, const char *shared_library_name);
 void ReplaceLuaModule(const std::string &mainPath, const Signatures &signatures, const ListExports_t &exports);

@@ -327,9 +327,13 @@ extern char *__progname;
 static bool gum_initialized = false;
 
 __attribute__((constructor)) void init() {
-    if (!getExePath().string().contains("dontstarve")) {
+    if (!getExePath().filename().string().starts_with("dontstarve")) {
         return;
     }
+#ifdef __linux__
+    // Gum snapshots loaded modules during initialization on Linux.
+    PreloadLuaModulesForInjector();
+#endif
     auto api = dlsym(RTLD_DEFAULT, "chdir");
     if (!api) {
         return;
