@@ -61,4 +61,9 @@ docker run --rm \
             LD_LIBRARY_PATH="$PWD/Mod/bin64/linux/lib64:$PWD/3rd/steam/redistributable_bin/linux64" \
             LD_PRELOAD="$PWD/Mod/bin64/linux/lib64/libInjector.so" \
             /bin/true
+        cp /bin/true /tmp/dontstarve_preload_smoke
+        timeout 10s env \
+            LD_LIBRARY_PATH="$PWD/Mod/bin64/linux/lib64:$PWD/3rd/steam/redistributable_bin/linux64" \
+            LD_PRELOAD="$PWD/Mod/bin64/linux/lib64/libInjector.so" \
+            /tmp/dontstarve_preload_smoke
     '

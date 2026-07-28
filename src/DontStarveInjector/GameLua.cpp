@@ -5,6 +5,7 @@
 #include "GameSignature.hpp"
 #include "util/inlinehook.hpp"
 #include "util/platform.hpp"
+#include "util/gum_platform.hpp"
 #include "util/lua_io2.hpp"
 #include "util/lua51_object.hpp"
 #include "gameio.h"
@@ -324,16 +325,16 @@ struct GameLuaContextImpl : GameLuaContext {
             sharedlibraryName = getenv("GAME_LUA_MODULE_NAME");
         }
 
-        LuaModule = gum_process_find_module_by_name(sharedlibraryName.c_str());
+        LuaModule = gum_find_module_by_name_or_path(sharedlibraryName.c_str());
         if (!LuaModule) {
             GError *error = nullptr;
-#ifndef _WIN32
-            loadlib(sharedlibraryName.c_str());
-#endif
-            LuaModule = gum_module_load(sharedlibraryName.c_str(), &error);
+            LuaModule = gum_find_or_load_module(sharedlibraryName.c_str(), &error);
             if (!LuaModule) {
-                spdlog::error("Cannot load Lua module: {}, error: {}", sharedlibraryName, error->message);
-                g_error_free(error);
+                spdlog::error("Cannot load Lua module: {}, error: {}", sharedlibraryName,
+                              error ? error->message : "unknown error");
+                if (error) {
+                    g_error_free(error);
+                }
             } else {
                 spdlog::info("Loaded Lua module: {}", sharedlibraryName);
             }
@@ -920,6 +921,9 @@ namespace {
 
 #if DONTSTARVEINJECTOR_INITIALIZE_ALL_SO
 static __attribute__((constructor)) void initialize_all_so() {
+    if (!getExePath().filename().string().contains("dontstarve")) {
+        return;
+    }
     loadlib(DefaultLua51LibraryName().c_str());
     loadlib(DefaultLuajitLibraryName().c_str());
     loadlib(DefaultLuajitGenLibraryName().c_str());

@@ -56,16 +56,8 @@ constexpr auto only_base_api =
 }
 
 static GumModule *get_lua51_module() {
-    auto module = gum_process_find_module_by_name(lua51_name);
-    if (module) {
-        return module;
-    }
-
     GError *error = nullptr;
-#ifndef _WIN32
-    loadlib(lua51_name);
-#endif
-    module = gum_module_load(lua51_name, &error);
+    auto *module = gum_find_or_load_module(lua51_name, &error);
     if (!module) {
         spdlog::error("Cannot load Lua module {} for signature generation: {}", lua51_name,
                       error ? error->message : "unknown error");
