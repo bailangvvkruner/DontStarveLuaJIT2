@@ -61,6 +61,11 @@ docker run --rm \
         cmake --preset ninja-multi-vcpkg -DGAME_DIR=OFF -DDONTSTARVE_STATIC_LIBSTDCXX=ON
         cmake --build ./builds/ninja-multi-vcpkg --config RelWithDebInfo
         cmake --build ./builds/ninja-multi-vcpkg --config RelWithDebInfo --target install
+        while IFS= read -r -d "" binary; do
+            if readelf -h "$binary" >/dev/null 2>&1; then
+                strip --strip-unneeded "$binary"
+            fi
+        done < <(find Mod/bin64/linux -type f -print0)
         python3 tools/check_linux_elf_compat.py \
             Mod/bin64/linux/lib64 \
             --max-glibc 2.28 \
