@@ -57,4 +57,8 @@ docker run --rm \
             Mod/bin64/linux/lib64 \
             --max-glibc 2.28 \
             --forbid-needed libstdc++.so.6
+        timeout 10s env \
+            LD_LIBRARY_PATH="$PWD/Mod/bin64/linux/lib64" \
+            LD_PRELOAD="$PWD/Mod/bin64/linux/lib64/libInjector.so" \
+            /bin/true
     '
