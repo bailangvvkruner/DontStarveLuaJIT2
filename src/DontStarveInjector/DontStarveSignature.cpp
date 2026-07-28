@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <future>
 #include <coroutine>
+#include <utility>
 
 #include <frida-gum.h>
 #include <spdlog/spdlog.h>
@@ -54,10 +55,37 @@ constexpr auto only_base_api =
     return true;
 }
 
-static auto get_lua51_exports() {
+static GumModule *get_lua51_module() {
+    auto module = gum_process_find_module_by_name(lua51_name);
+    if (module) {
+        return module;
+    }
+
+    GError *error = nullptr;
+#ifndef _WIN32
+    loadlib(lua51_name);
+#endif
+    module = gum_module_load(lua51_name, &error);
+    if (!module) {
+        spdlog::error("Cannot load Lua module {} for signature generation: {}", lua51_name,
+                      error ? error->message : "unknown error");
+        if (error) {
+            g_error_free(error);
+        }
+    }
+    return module;
+}
+
+static std::expected<ListExports_t, std::string> get_lua51_exports() {
     ListExports_t exports;
-    auto m = gum_process_find_module_by_name(lua51_name);
+    auto m = get_lua51_module();
+    if (!m) {
+        return std::unexpected(std::string{"cannot load Lua module "} + lua51_name);
+    }
     gum_module_enumerate_exports(m, ListLuaFuncCb, &exports);
+    if (exports.empty()) {
+        return std::unexpected(std::string{"no Lua exports found in "} + lua51_name);
+    }
     std::sort(exports.begin(), exports.end(), [](auto &l, auto &r) { return l.second > r.second; });
     return exports;
 }
@@ -65,7 +93,11 @@ static auto get_lua51_exports() {
 static std::expected<std::tuple<ListExports_t, Signatures>, std::string>
 create_signature(uintptr_t targetLuaModuleBase, const std::function<void(const Signatures &)> &updated) {
     spdlog::warn("try create all signatures");
-    auto exports = get_lua51_exports();
+    auto exports_result = get_lua51_exports();
+    if (!exports_result) {
+        return std::unexpected(exports_result.error());
+    }
+    auto exports = std::move(exports_result.value());
     Signatures signatures;
     for (auto &[name, address]: exports) {
         signatures.funcs[name] = {};
@@ -98,7 +130,11 @@ get_signatures(Signatures &signatures, uintptr_t targetLuaModuleBase,
     auto &funcs = signatures.funcs;
     std::string errormsg;
 
-    auto exports = get_lua51_exports();
+    auto exports_result = get_lua51_exports();
+    if (!exports_result) {
+        return std::unexpected(exports_result.error());
+    }
+    auto exports = std::move(exports_result.value());
     for (auto &[name, address]: exports) {
         if (!funcs.contains(name)) {
             errormsg += name + ";";
@@ -179,7 +215,10 @@ Generator<int> update_signatures(Signatures &signatures, uintptr_t targetLuaModu
                 throw  update_signatures_exception{"init_module_signature failed!"};
             }
 
-    auto lua51_module = gum_process_find_module_by_name(lua51_name);
+    auto lua51_module = get_lua51_module();
+    if (!lua51_module) {
+        throw update_signatures_exception{"cannot load Lua module for signature update"};
+    }
 #ifndef __APPLE__
     spdlog::info("lua51 module base address:{}", (void*)modulelua51.details.range.base_address);
     spdlog::info("game module base address:{}", (void*)moduleMain.details.range.base_address);
