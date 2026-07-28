@@ -59,7 +59,7 @@ namespace function_relocation {
         if (path == nullptr) {
             return gum_process_get_main_module();
         }
-        GumModule *out_details;
+        GumModule *out_details = nullptr;
         auto fn = [&](GumModule *module) -> gboolean {
             auto module_path = gum_module_get_path(module);
             if (strcmp(module_path, path) == 0 || std::string_view(module_path).ends_with(path)) {
@@ -76,6 +76,9 @@ namespace function_relocation {
 
     bool get_module_sections(const char *path, ModuleSections &sections) {
         const auto module = get_module(path);
+        if (!module) {
+            return false;
+        }
         auto module_path = gum_module_get_path(module);
 #ifdef _WIN32
         const auto pe = peparse::ParsePEFromFile(module_path);

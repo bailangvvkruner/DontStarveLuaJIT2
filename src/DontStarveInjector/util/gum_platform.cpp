@@ -24,6 +24,9 @@ std::string get_module_path(const char *maybeName, uintptr_t ptr) {
                 return true;
             },
             (void *) &arg);
+    if (res.empty()) {
+        return {};
+    }
     for (auto &p: res) {
         if (p == maybeName)
             return p;

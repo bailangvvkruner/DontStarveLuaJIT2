@@ -201,6 +201,9 @@ Generator<int> update_signatures(Signatures &signatures, uintptr_t targetLuaModu
                   bool updated) {
     const auto &lua51_path = get_module_path(lua51_name, 0);
     const auto &game_path = get_module_path(game_name, targetLuaModuleBase);
+    if (lua51_path.empty() || game_path.empty()) {
+        throw update_signatures_exception{"cannot locate Lua or game module for signature update"};
+    }
     function_relocation::ModuleSections modulelua51{}, moduleMain{};
 
 #ifndef _WIN32

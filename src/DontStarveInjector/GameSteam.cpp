@@ -105,8 +105,18 @@ void HookSteamGameServerInterface() {
     
     if (!InjectorCtx::instance()->DontStarveInjectorIsClient) {
         constexpr auto api_name = "SteamInternal_FindOrCreateGameServerInterface";
-        auto m = gum_process_find_module_by_name(path.c_str());
-        SteamInternal_FindOrCreateGameServerInterface_fn = (decltype(SteamInternal_FindOrCreateGameServerInterface_fn)) gum_module_find_export_by_name(m, api_name);
+        GError *error = nullptr;
+        auto module = gum_module_load(path.c_str(), &error);
+        if (!module) {
+            spdlog::error("Failed to load steam_api module {}: {}", path,
+                          error ? error->message : "unknown error");
+            if (error) {
+                g_error_free(error);
+            }
+            return;
+        }
+        SteamInternal_FindOrCreateGameServerInterface_fn =
+                (decltype(SteamInternal_FindOrCreateGameServerInterface_fn)) gum_module_find_export_by_name(module, api_name);
         if (SteamInternal_FindOrCreateGameServerInterface_fn == nullptr) {
             spdlog::error("Failed to find {} in steam_api module", api_name);
             return;
