@@ -26,8 +26,24 @@ docker run --rm \
 
         dnf install -y ninja-build pkgconf-pkg-config zip
         export PATH="/opt/python/cp313-cp313/bin:$PATH"
+        if ! command -v ninja >/dev/null 2>&1; then
+            ninja_build="$(command -v ninja-build || true)"
+            [ -n "$ninja_build" ] || {
+                printf "error: ninja executable was not installed.\n" >&2
+                exit 1
+            }
+            ln -sf "$ninja_build" /usr/local/bin/ninja
+        fi
+
+        export CC=gcc
+        export CXX=g++
         export VCPKG_DEFAULT_BINARY_CACHE=/workspace/.vcpkg-bincache
         export VCPKG_BINARY_SOURCES="clear;files,/workspace/.vcpkg-bincache,readwrite"
+        mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+
+        cmake --version
+        ninja --version
+        "$CXX" --version
 
         bash ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
         cmake --preset ninja-multi-vcpkg -DGAME_DIR=OFF -DDONTSTARVE_STATIC_LIBSTDCXX=ON
