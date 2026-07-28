@@ -919,14 +919,14 @@ namespace {
     }
 }
 
+#ifdef __linux__
+void PreloadLuaModulesForInjector() {
+    loadlib(lua51_name);
 #if DONTSTARVEINJECTOR_INITIALIZE_ALL_SO
-static __attribute__((constructor)) void initialize_all_so() {
-    if (!getExePath().filename().string().contains("dontstarve")) {
-        return;
-    }
     loadlib(DefaultLua51LibraryName().c_str());
     loadlib(DefaultLuajitLibraryName().c_str());
     loadlib(DefaultLuajitGenLibraryName().c_str());
+#endif
 }
 #endif
 
