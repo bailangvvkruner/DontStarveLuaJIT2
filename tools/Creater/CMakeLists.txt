@@ -62,7 +62,7 @@ target_include_directories(signature_updater PUBLIC ${DONTSTARVEINJECTOR_UTIL_DI
 target_include_directories(signature_updater PUBLIC ${DONTSTARVEINJECTOR_ROOT})
 target_link_libraries(signature_updater PRIVATE spdlog::spdlog)
 if (UNIX)
-    target_link_libraries(signature_updater PRIVATE Threads::Threads)
+    target_link_libraries(signature_updater PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
 endif ()
 
 

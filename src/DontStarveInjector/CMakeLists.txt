@@ -122,7 +122,7 @@ target_link_libraries(Injector PRIVATE spdlog::spdlog)
 target_link_libraries(Injector PRIVATE range-v3::meta range-v3::concepts range-v3::range-v3)
 target_link_libraries(Injector PRIVATE SLikeNet)
 if (UNIX)
-    target_link_libraries(Injector PRIVATE Threads::Threads)
+    target_link_libraries(Injector PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
 endif ()
 if (WIN32)
     target_link_libraries(Injector PRIVATE
