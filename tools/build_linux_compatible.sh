@@ -24,7 +24,7 @@ docker run --rm \
         }
         trap cleanup EXIT
 
-        dnf install -y ninja-build pkgconf-pkg-config zip
+        dnf install -y ninja-build pkgconf-pkg-config zip kernel-headers perl-IPC-Cmd
         export PATH="/opt/python/cp313-cp313/bin:$PATH"
         if ! command -v ninja >/dev/null 2>&1; then
             ninja_build="$(command -v ninja-build || true)"
