@@ -100,6 +100,10 @@
 Linux 发布包以 glibc 2.28 为兼容基线，支持 x86_64 Debian 10 及更新版本。
 如果启动时出现 `GLIBC_2.38 not found` 或 `GLIBCXX_3.4.32 not found`，说明使用的是旧的 Ubuntu 24.04 构建包；请改用包含 Debian 兼容修复的新版本，或在 Debian 上重新编译。不要手动替换系统 glibc。
 
+使用 `dst-admin-go` 面板或在 Debian/Ubuntu 裸机部署专用服务器，请阅读
+[Linux 专用服务器部署（面板与裸机）](Mod/README_LINUX.md)。推荐使用发布包内的
+`install_linux.sh`，不要只复制 `libInjector.so`。
+
 从源码构建 Debian 兼容包时，安装 Docker 后在仓库根目录执行：
 
 ```bash
