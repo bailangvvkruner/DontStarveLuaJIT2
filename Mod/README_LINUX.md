@@ -47,10 +47,18 @@ bash "$DST_SERVER_DIR/mods/DontStarveLuaJIT2/install_linux.sh" \
 [INFO] Installation completed successfully (1 launcher(s) installed).
 ```
 
-### 启用本地 Mod
+### 是否需要启用服务器 Mod
 
-把下面这一项合并到 Master 和 Caves 各自已有的 `modoverrides.lua` 返回表中，
-不要覆盖文件里原有的其他 Mod：
+对于专用服务器，`install_linux.sh` 安装的启动器和 Injector 才是 LuaJIT
+替换的必要部分。默认配置下不需要把本项目手动加入 Master 或 Caves 的
+`modoverrides.lua`；Injector 会在服务器进程内处理本项目的启用逻辑。
+
+但是，发布包的 Mod 目录或对应的 Workshop 内容仍应保留在服务器文件系统中。
+这样才能加载 `modmain.lua`、服务器端兼容处理和配置项。只删除 Mod 本体而留下
+`bin64` 补丁，可能仍能启动 LuaJIT，但本项目的 Mod 配置和附加 Lua 注入不会生效。
+
+如果需要明确保存服务器选项，可以把下面这一项合并到 Master 和 Caves 各自已有的
+`modoverrides.lua` 返回表中，不要覆盖文件里原有的其他 Mod：
 
 ```lua
 ["DontStarveLuaJIT2"] = {
@@ -61,6 +69,9 @@ bash "$DST_SERVER_DIR/mods/DontStarveLuaJIT2/install_linux.sh" \
 
 示例目录名和配置键必须保持一致。如果把 Mod 文件夹改成其他名称，
 `modoverrides.lua` 中也要使用相同名称。
+
+服务器上的其他游戏 Mod 仍按 DST 的正常方式配置；这里的“无需手动启用”只针对
+`DontStarveLuaJIT2` 本身。客户端单独运行游戏时，仍需按客户端需求启用对应 Mod。
 
 检查安装结果：
 
