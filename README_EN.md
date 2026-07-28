@@ -1,4 +1,4 @@
-[中文版本](README_CN.md)
+[中文版本](README.md) | [Releases](../../releases) | [Build status](../../actions/workflows/release.yaml)
 
 # DontStarveLuaJIT
 
@@ -39,6 +39,20 @@ Note that on dedicated servers, the `Disable JIT on Server` option in the settin
 
 # Installation:
 
+Download a packaged build from [Releases](../../releases), not GitHub's
+automatically generated source archive:
+
+| Asset | Target | Notes |
+| --- | --- | --- |
+| `windows_Mod.zip` | Windows x64 | Client and dedicated server |
+| `linux_Mod.zip` | Ubuntu 24.04 x64 | Native Ubuntu 24.04 build |
+| `debian_Mod.zip` | Debian/Ubuntu x64 | Recommended for Linux servers; glibc 2.28+ and static libstdc++ |
+| `macos_Mod.zip` | macOS x64 | Intel x64 build |
+
+The archive contains a top-level `Mod/` directory. Keep the Lua mod, signature
+files, injector, and Lua VM libraries from the same release together. Copying
+only `libInjector.so` is not a complete installation.
+
 ## 1. Mod:
 
 1. Create a new folder in the mods folder in the root directory of the game with a name like `luajit_mod`.
@@ -66,21 +80,59 @@ print(jit)
 
 ### Linux
 
-I've only tested it on Ubuntu, but I can also test it on SteamOS if someone can help me with the SteamOS environment.
-
-- Copy all `bin64/linux` files to the `bin64` folder in the game directory, including the files outside `lib64`, such as `signatures_*.json`.
-- Rename original game executable `dontstarve_steam_x64` to `dontstarve_steam_x64_1`
-- Create new file `dontstarve_steam_x64` with the content:
+For a dedicated server, extract the complete release into a folder under the
+game's `mods/` directory. For example:
 
 ```bash
-#!/bin/bash
-export LD_LIBRARY_PATH=./lib64
-export LD_PRELOAD=./lib64/libInjector.so
-./dontstarve_steam_x64_1
+DST_ROOT=/root/dst-dedicated-server
+MOD_DIR="$DST_ROOT/mods/DontStarveLuaJIT2"
+DST_LUAJIT_TMP="$(mktemp -d)"
+
+mkdir -p "$MOD_DIR"
+unzip -o /root/debian_Mod.zip -d "$DST_LUAJIT_TMP"
+cp -a "$DST_LUAJIT_TMP/Mod/." "$MOD_DIR/"
+
+cd "$MOD_DIR"
+chmod +x install_linux.sh
+bash ./install_linux.sh
 ```
 
-- Run the command `chmod +x ./dontstarve_steam_x64`
-- Done
+Run the installer from the mod root. It does not accept `--bin-dir`; it derives
+the game's `bin64` directory from the standard local-mod or Workshop layout.
+It copies the complete Linux payload, renames the original executable with an
+`_1` suffix, and creates an `LD_PRELOAD` wrapper at the original filename.
+
+The panel or process manager must continue to launch:
+
+```text
+/root/dst-dedicated-server/bin64/dontstarve_dedicated_server_nullrenderer_x64
+```
+
+Do not point it at the `_1` executable. The working directory must be the
+game's `bin64` directory because the wrapper uses relative `./lib64` paths.
+
+Before starting through a panel, verify the Master shard in the foreground:
+
+```bash
+cd /root/dst-dedicated-server/bin64
+./dontstarve_dedicated_server_nullrenderer_x64 \
+  -console -cluster MyDediServer -shard Master
+```
+
+Keep the complete mod directory and enable it in every shard's
+`modoverrides.lua`. Installing the native injector alone does not replace
+enabling the Lua mod. The Workshop ID is `3444078585`.
+
+For `dst-admin-go`, no extra environment variables or arguments are required.
+Use `screen -ls` to find the generated world/shard session name; do not assume
+it is simply named `dst`. If the screen session exits immediately, run the
+foreground command above to see the loader error.
+
+For dependency errors, use `debian_Mod.zip` and check:
+
+```bash
+ldd /root/dst-dedicated-server/bin64/lib64/libInjector.so | grep 'not found' || true
+```
 
 Note: The injector expects the working directory (where `dontstarve_steam_x64`
 is located) to be writable in order to create log files.

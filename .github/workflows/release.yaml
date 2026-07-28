@@ -4,6 +4,7 @@ permissions:
   contents: write
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - master
@@ -24,6 +25,7 @@ jobs:
         include:
           - { os: windows-2022, target: windows, platform: win32-x64 }
           - { os: ubuntu-24.04,   target: linux,   platform: linux-x64 }
+          - { os: ubuntu-24.04,   target: debian,  platform: linux-x64 }
           - { os: macos-14,       target: macos,   platform: macos-x64 }
     runs-on: ${{ matrix.os }}
     steps:
@@ -36,29 +38,38 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ github.workspace }}/.vcpkg-bincache
-          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakeLists.txt', 'cmake/custom-triplets/**', 'cmake/ports/**') }}
+          key: ${{ runner.os }}-${{ matrix.target == 'debian' && 'manylinux_2_28-' || '' }}vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'CMakeLists.txt', 'cmake/custom-triplets/**', 'cmake/ports/**') }}
       - name: Initialize MSVC developer environment
         if: ${{ matrix.target == 'windows' }}
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64
       - uses: lukka/get-cmake@latest
+        if: ${{ matrix.target != 'debian' }}
         with:
           cmakeVersion: 3.31.6     # <--= optional, stick to exactly 3.25.2 version
           ninjaVersion: 1.11.1     # <--= optional, stick to exactly 1.11.1 version
       - uses: actions/setup-python@v5
+        if: ${{ matrix.target != 'debian' }}
         with:
           python-version: '3.13' 
       - name: Restore from cache and setup vcpkg executable and data files.
+        if: ${{ matrix.target != 'debian' }}
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgJsonGlob: 'vcpkg.json'
 
       - name: Configure CMake and populate vcpkg binary cache
+        if: ${{ matrix.target != 'debian' }}
         uses: lukka/run-cmake@v10
         with:
           configurePreset: 'ninja-multi-vcpkg'
           configurePresetAdditionalArgs: "['-DCMAKE_OSX_ARCHITECTURES=x86_64']"
+
+      - name: Build Debian-compatible Linux release
+        if: ${{ matrix.target == 'debian' }}
+        shell: bash
+        run: bash tools/build_linux_compatible.sh
 
       - name: Save vcpkg binary cache
         if: ${{ always() && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
@@ -68,15 +79,27 @@ jobs:
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       - name: Build
+        if: ${{ matrix.target != 'debian' }}
         run: |
           cmake --build ./builds/ninja-multi-vcpkg --config RelWithDebInfo
 
       - name: CMake install
+        if: ${{ matrix.target != 'debian' }}
         run: |
           cmake --build ./builds/ninja-multi-vcpkg --config RelWithDebInfo --target install
 
-      - name: Clean Up linux
+      - name: Strip Ubuntu Linux release binaries
         if: ${{ matrix.target == 'linux' }}
+        shell: bash
+        run: |
+          while IFS= read -r -d '' binary; do
+            if readelf -h "$binary" >/dev/null 2>&1; then
+              strip --strip-unneeded "$binary"
+            fi
+          done < <(find Mod/bin64/linux -type f -print0)
+
+      - name: Clean Up linux
+        if: ${{ matrix.target == 'linux' || matrix.target == 'debian' }}
         run: |
           rm -rf ${{ github.workspace }}/Mod/bin64/windows
           rm -rf ${{ github.workspace }}/Mod/bin64/osx
@@ -100,6 +123,19 @@ jobs:
           filename: ${{ matrix.target }}_Mod.zip
           directory: ${{ github.workspace }}
 
+      - name: Enforce Linux package size budget
+        if: ${{ matrix.target == 'linux' || matrix.target == 'debian' }}
+        shell: bash
+        run: |
+          package="${{ github.workspace }}/${{ matrix.target }}_Mod.zip"
+          size=$(stat -c %s "$package")
+          limit=$((12 * 1024 * 1024))
+          echo "${{ matrix.target }} package size: $size bytes (limit: $limit bytes)"
+          if (( size > limit )); then
+            echo "::error file=.github/workflows/release.yaml,title=Linux package is too large::$size bytes exceeds the $limit byte limit"
+            exit 1
+          fi
+
       - name: Upload packaged mod
         uses: actions/upload-artifact@v4
         with:
@@ -116,6 +152,7 @@ jobs:
         include:
           - { os: windows-2022, target: windows, platform: win32-x64 }
           - { os: ubuntu-24.04,   target: linux,   platform: linux-x64 }
+          - { os: ubuntu-24.04,   target: debian,  platform: linux-x64 }
           - { os: macos-14,       target: macos,   platform: macos-x64 }
     runs-on: ${{ matrix.os }}
     steps:

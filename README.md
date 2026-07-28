@@ -1,10 +1,19 @@
-[English](README_EN.md)
+[English](README_EN.md) | [下载 Release](../../releases) | [构建状态](../../actions/workflows/release.yaml)
 
 # DontStarveLuaJIT
 
 	Don't Starve LuaJIT 优化补丁
 
   QQ群: 348368954
+
+## 快速导航
+
+- [选择发布包](#选择发布包)
+- [Linux 专用服务器快速安装](#linux-专用服务器快速安装)
+- [配合 dst-admin-go](#配合-dst-admin-go)
+- [裸机后台运行](#裸机后台运行)
+- [常见问题](#常见问题)
+- [云编译与发布](#云编译与发布)
 
 ## 注意
 
@@ -71,116 +80,356 @@
 
 支持pc玩家跨平台游戏.(ps: 🫓)
 
+# 下载、安装与运行
 
-# 安装：
+## 选择发布包
 
-## 1.MOD本体：
+不要下载 GitHub 自动生成的 `Source code.zip` 代替成品包。请进入
+[Releases](../../releases)，按运行环境下载：
 
-1. 先在游戏根目录下的mods文件夹中创建一个新的文件夹，名字随意取，比如`Luajit`
-2. 然后把所有的文件复制到该目录
+| 文件 | 适用环境 | 说明 |
+| --- | --- | --- |
+| `windows_Mod.zip` | Windows x64 | Windows 客户端和专用服务器 |
+| `linux_Mod.zip` | Ubuntu 24.04 x64 | Ubuntu 24.04 原生构建 |
+| `debian_Mod.zip` | Debian/Ubuntu x64 | 推荐用于 Linux 专用服务器；要求 glibc 2.28 或更高，静态链接 libstdc++ |
+| `macos_Mod.zip` | macOS x64 | Intel x64 构建 |
 
-## 2.注入部分：
+`debian_Mod.zip` 不是只给 Debian 使用。Ubuntu 服务器如果不确定系统运行库
+版本，也可以优先选择这个包。两个 Linux ZIP 的 CI 包体上限均为 12 MiB。
 
-### 方法 1（自动安装）
-- 直接运行Luajit文件夹内的`install.bat` (Windows系统) / `install_linux.sh` (Linux系统)
-- 运行`install_linux.sh`前可能需要先执行`chmod +x ./install_linux.sh`赋予权限
+发布包解压后的顶层目录是 `Mod/`，里面同时包含：
 
-### 方法 2（手动安装）
+- Lua Mod 本体：`modinfo.lua`、`modmain.lua`、`scripts/`；
+- Linux 注入库：`bin64/linux/lib64/libInjector.so` 和四套 Lua VM；
+- Linux 安装器：`install_linux.sh`。
 
-#### Windows
+不能只复制 `libInjector.so`。Mod 本体、签名文件和其余动态库必须使用同一个
+Release 中的版本，不能混用旧包。
 
-- 将 `Luajit/bin64/windows` 文件夹内所有文件`复制`到`游戏目录`下的 `bin64` 文件夹中
-- 比如 D:\Steam\steamapps\common\Don't Starve Together\bin64
-- 专用服务器同理
+## Linux 专用服务器快速安装
 
-#### Linux
+下面以游戏目录 `/root/dst-dedicated-server` 为例。其他路径只需要修改
+`DST_ROOT`。
 
-我只在 ubuntu 上测试过，但如果有人能提供 steamos 环境，我也可以在 steamos 上测试，哈哈！
-
-- 将 `Luajit/bin64/linux` 文件夹内所有文件`复制`到`游戏目录`下的 `bin64`文件夹中
-- 将原始游戏可执行文件 `dontstarve_steam_x64` 重命名为 `dontstarve_steam_x64_1`
-- 创建内容为 `dontstarve_steam_x64` 的新文件：
+### 1. 检查系统并停止服务器
 
 ```bash
-#!/bin/bash
+uname -m
+ldd --version | head -n 1
+
+pgrep -af 'dontstarve_(steam|dedicated_server)'
+```
+
+目前仅提供 `x86_64`。安装前请在面板中停止所有世界，确认 Master 和 Caves
+进程都已退出，并备份存档。
+
+### 2. 解压完整 Mod
+
+把下载好的 `debian_Mod.zip` 上传到服务器，然后执行：
+
+```bash
+DST_ROOT=/root/dst-dedicated-server
+MOD_DIR="$DST_ROOT/mods/DontStarveLuaJIT2"
+
+apt-get update
+apt-get install -y file screen unzip
+DST_LUAJIT_TMP="$(mktemp -d)"
+mkdir -p "$MOD_DIR"
+unzip -o /root/debian_Mod.zip -d "$DST_LUAJIT_TMP"
+cp -a "$DST_LUAJIT_TMP/Mod/." "$MOD_DIR/"
+
+test -f "$MOD_DIR/modmain.lua"
+test -f "$MOD_DIR/bin64/linux/lib64/libInjector.so"
+```
+
+如果下载的是 `linux_Mod.zip`，只需替换上面的 ZIP 文件名。
+
+### 3. 执行安装器
+
+必须在 Mod 根目录执行：
+
+```bash
+cd /root/dst-dedicated-server/mods/DontStarveLuaJIT2
+chmod +x install_linux.sh
+bash ./install_linux.sh
+```
+
+当前安装器不接受 `--bin-dir`。它根据 Mod 所在位置定位游戏 `bin64`：
+
+- 本地 Mod：`<游戏目录>/mods/<模组目录>/install_linux.sh`；
+- Steam Workshop：`steamapps/workshop/content/322330/<模组 ID>/install_linux.sh`。
+
+安装器会：
+
+1. 停止仍在运行的 DST 客户端/专服进程；
+2. 把 `bin64/linux` 中的完整文件集复制到游戏 `bin64`；
+3. 将原始专服程序重命名为
+   `dontstarve_dedicated_server_nullrenderer_x64_1`；
+4. 在原文件名处创建设置 `LD_LIBRARY_PATH` 和 `LD_PRELOAD` 的启动脚本。
+
+安装后应满足：
+
+```bash
+DST_BIN=/root/dst-dedicated-server/bin64
+
+file "$DST_BIN/dontstarve_dedicated_server_nullrenderer_x64"
+file "$DST_BIN/dontstarve_dedicated_server_nullrenderer_x64_1"
+ls -lh "$DST_BIN/lib64/libInjector.so"
+ldd "$DST_BIN/lib64/libInjector.so" | grep 'not found' || true
+```
+
+预期结果：不带 `_1` 的文件是 shell 脚本，带 `_1` 的文件是 x86-64 ELF，
+并且 `ldd` 没有输出 `not found`。
+
+### 4. 启用 Mod
+
+安装注入器不等于启用 Lua Mod。标准安装需要同时保留整个 Mod 目录，并在
+Master 和 Caves 的 `modoverrides.lua` 中启用它。
+
+使用 Release 中的本地目录时：
+
+```lua
+return {
+    ["DontStarveLuaJIT2"] = {
+        enabled = true,
+        configuration_options = {
+            EnabledJIT = true,
+            AlwaysEnableMod = true,
+        },
+    },
+}
+```
+
+如果文件里已经配置了其他 Mod，只合并上面的条目，不要覆盖原有 `return`
+表。
+
+使用 Steam Workshop 版本时，在 `dedicated_server_mods_setup.lua` 中加入：
+
+```lua
+ServerModSetup("3444078585")
+```
+
+对应的 `modoverrides.lua` 键名使用 `workshop-3444078585`。每个 shard 都有
+自己的 `modoverrides.lua`，例如：
+
+```text
+~/.klei/DoNotStarveTogether/MyDediServer/Master/modoverrides.lua
+~/.klei/DoNotStarveTogether/MyDediServer/Caves/modoverrides.lua
+```
+
+实际根目录会受到 `-persistent_storage_root` 和运行账号影响。
+
+### 5. 先以前台方式验证
+
+第一次安装后不要直接依赖面板状态。先在 `bin64` 前台启动 Master：
+
+```bash
+cd /root/dst-dedicated-server/bin64
+./dontstarve_dedicated_server_nullrenderer_x64 \
+  -console \
+  -cluster MyDediServer \
+  -shard Master
+```
+
+确认没有动态库错误并进入正常加载流程后，用 `Ctrl+C` 停止，再交给面板或
+后台进程管理器启动。验证 Caves 时将 `Master` 改为 `Caves`。
+
+专服控制台执行 `print(jit)`，返回一个 table（例如 `table: 0x...`）表示
+LuaJIT 已加载。
+
+## 配合 dst-admin-go
+
+`dst-admin-go` 不需要新增启动参数，也不要把程序路径改成带 `_1` 的文件。
+面板仍应启动安装器生成的原文件名：
+
+```text
+游戏目录: /root/dst-dedicated-server
+工作目录: /root/dst-dedicated-server/bin64
+可执行文件: dontstarve_dedicated_server_nullrenderer_x64
+```
+
+正常命令形态如下：
+
+```bash
+cd /root/dst-dedicated-server/bin64
+screen -d -m -S "DST_MyDediServer_Master" \
+  ./dontstarve_dedicated_server_nullrenderer_x64 \
+  -console -cluster MyDediServer -shard Master
+```
+
+包装脚本会自动设置 `LD_LIBRARY_PATH=./lib64` 和
+`LD_PRELOAD=./lib64/libInjector.so`，面板中不需要重复填写。
+
+面板显示启动成功但看不到窗口时，先列出真实 session 名：
+
+```bash
+screen -ls
+screen -r DST_MyDediServer_Master
+```
+
+不要固定执行 `screen -r dst`；`dst-admin-go` 通常会按世界、集群和 shard
+生成不同的 session 名。如果 session 启动后立即消失，请回到上一节以前台
+方式运行，终端中的第一条错误通常就是根因。
+
+## 裸机后台运行
+
+不使用面板时，可以直接用 `screen`：
+
+```bash
+screen -dmS DST_Master bash -lc '
+  cd /root/dst-dedicated-server/bin64 &&
+  exec ./dontstarve_dedicated_server_nullrenderer_x64 \
+    -console -cluster MyDediServer -shard Master
+'
+```
+
+查看和停止：
+
+```bash
+screen -ls
+screen -r DST_Master
+```
+
+进入 session 后按 `Ctrl+C` 停止；按 `Ctrl+A`、`D` 退出但保持后台运行。
+Master 与 Caves 应使用不同的 session 名。
+
+## Linux 手动安装
+
+只有在 Mod 不位于游戏 `mods/` 或 Workshop 标准目录时才需要手动安装。
+以下命令仅处理专用服务器：
+
+```bash
+DST_ROOT=/root/dst-dedicated-server
+MOD_DIR=/path/to/extracted/Mod
+DST_BIN="$DST_ROOT/bin64"
+
+cp -a "$MOD_DIR/bin64/linux/." "$DST_BIN/"
+cd "$DST_BIN"
+
+if file dontstarve_dedicated_server_nullrenderer_x64 | grep -q ELF; then
+    mv dontstarve_dedicated_server_nullrenderer_x64 \
+       dontstarve_dedicated_server_nullrenderer_x64_1
+fi
+
+cat > dontstarve_dedicated_server_nullrenderer_x64 <<'EOF'
+#!/usr/bin/env bash
 export LD_LIBRARY_PATH=./lib64
 export LD_PRELOAD=./lib64/libInjector.so
-./dontstarve_steam_x64_1 "$@"
+exec ./dontstarve_dedicated_server_nullrenderer_x64_1 "$@"
+EOF
+
+chmod +x dontstarve_dedicated_server_nullrenderer_x64
 ```
 
-- 运行 shell `chmod +x ./dontstarve_steam_x64`
-- 搞定
+即使手动安装注入器，仍须把完整 `Mod/` 放入游戏的 `mods/` 并启用它。
 
-- 专用服务器文件名为`dontstarve_dedicated_server_nullrenderer_x64`，请自行替换相关内容
+## 常见问题
 
-#### Macos
+### `libInjector.so is missing`
 
-- 创建一个属于自己的证书，比如名字为Dontstarve
+通常是下载了源码包、只复制了脚本，或者在错误目录运行。成品包应存在：
 
-  [官方教程](https://support.apple.com/zh-cn/guide/keychain-access/kyca8916/mac)
-
-- 打开shell
-- 切换到自己的游戏路径
-
-  `cd /Users/*/Library/Application Support/Steam/steamapps/common/Don't Starve Together/dontstarve_steam.app`
-
-- `sudo codesign -fs Dontstarve ./dontstarve_steam.app`
-- 创建一个新的权限管理文件，比如叫`my.xml`，内容：
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-    <dict>
-        <key>com.apple.security.cs.allow-dyld-environment-variables</key>
-        <true/>
-        <key>com.apple.security.cs.disable-library-validation</key>
-        <true/>
-        <key>com.apple.security.get-task-allow</key>
-        <true/>
-    </dict>
-</plist>
+```text
+Mod/bin64/linux/lib64/libInjector.so
 ```
 
-- `sudo codesign -d --entitlements ./my.xml ./dontstarve_steam.app`
-- 将 `Luajit/bin64/osx` 文件夹内所有文件`复制`到`游戏目录`下的 `MacOS`文件夹中
-- 将原始游戏可执行文件 `dontstarve_steam` 重命名为 `dontstarve_steam_1`
-- 创建内容为 `dontstarve_steam` 的新文件：
+请重新下载 `debian_Mod.zip` 或 `linux_Mod.zip`，不要在生产服务器上运行
+`tools/build_linux_compatible.sh`。该脚本用于 GitHub Actions/开发机通过 Docker
+编译发布物，不是服务器安装命令。
+
+### 面板请求返回 200，但游戏没有进程
+
+`screen -d -m` 即使其中程序立即崩溃，也可能先让面板得到成功返回。执行：
 
 ```bash
-#!/bin/bash
-export DYLD_INSERT_LIBRARIES=./libInjector.dylib
-./dontstarve_steam_1
+screen -ls
+cd /root/dst-dedicated-server/bin64
+./dontstarve_dedicated_server_nullrenderer_x64 \
+  -console -cluster MyDediServer -shard Master
 ```
 
-- 运行 shell `chmod +x ./dontstarve_steam`
+然后检查：
 
-## 3.启用mod
+```bash
+tail -n 200 DontStarveInjector_server_master.log
+tail -n 200 DontStarveInjector_server_caves.log
+ldd lib64/libInjector.so | grep 'not found' || true
+```
 
-在游戏中启用名为dontstarveluajit2的mod
+### 出现 `GLIBC_x.y not found` 或 `GLIBCXX_x.y not found`
 
-如果没有任何其他问题，应该可以在右下角的版本号看到luajit
+优先改用 `debian_Mod.zip`。它在 manylinux 2.28 环境构建，CI 会拒绝高于
+`GLIBC_2.28` 的符号，并检查不依赖宿主机 `libstdc++.so.6`。glibc 低于 2.28
+的发行版不在支持范围内。
 
-若为专用服务器：输入控制台代码`print(jit)`，游戏返回一个table则为安装成功（比如table: 0x18709a30）
+### SteamCMD 更新游戏后补丁失效
 
-## 4.卸载mod
+Steam 更新可能恢复原始可执行文件。停止所有世界后，从 Mod 目录重新执行：
 
-### Windows
-将`游戏目录`下的 `bin64`文件夹中的`Winmm.dll`删除或重命名
+```bash
+bash ./install_linux.sh
+```
 
-### Linux/MacOS
-- 删除安装游戏时自己创建的`dontstarve_steam_x64`文件
-- 将 `dontstarve_steam_x64_1` 重命名为 `dontstarve_steam_x64`
-- 专用服务器同理，文件名为`dontstarve_dedicated_server_nullrenderer_x64`
+### 加密 Mod 是否可用
+
+默认的 `AutoDetectEncryptedMod` 和 `SlowTailCall` 会为常见加密 Lua Mod 启用
+兼容处理。若 Mod 依赖 Lua 未定义行为、固定调用栈深度、私有原生扩展或特定
+Lua VM 实现，仍可能不兼容。服务器和需要运行该 Mod 代码的客户端应分别安装
+对应平台的补丁。
+
+## 卸载
+
+先停止所有 DST 进程。Linux 专服只需恢复原始入口即可停止注入：
+
+```bash
+cd /root/dst-dedicated-server/bin64
+
+if [ -f dontstarve_dedicated_server_nullrenderer_x64_1 ]; then
+    rm -f dontstarve_dedicated_server_nullrenderer_x64
+    mv dontstarve_dedicated_server_nullrenderer_x64_1 \
+       dontstarve_dedicated_server_nullrenderer_x64
+fi
+```
+
+随后在各 shard 的 `modoverrides.lua` 中禁用 Mod。不要直接清空游戏的整个
+`bin64/lib64`，其中可能包含 DST 自己的文件。必要时可用 SteamCMD 校验游戏
+文件后重新安装服务端。
+
+Windows 卸载时删除或重命名游戏 `bin64` 中的 `Winmm.dll`；macOS/Linux
+客户端恢复安装时重命名为 `_1` 的原始程序。
+
+## Windows 与 macOS
+
+- Windows：将完整 Mod 放入游戏 `mods/`，运行 `install.bat`；手动安装时将
+  `bin64/windows` 中的文件复制到游戏 `bin64`。
+- macOS：需要允许 `DYLD_INSERT_LIBRARIES` 并重新签名游戏程序；将
+  `bin64/osx` 文件复制到应用的 `MacOS` 目录，再用包装脚本设置
+  `DYLD_INSERT_LIBRARIES=./libInjector.dylib` 启动原程序。
+
+## 云编译与发布
+
+- 推送 `master`：编译 Windows、Ubuntu、Debian compatible、macOS，并发布
+  Preview Release；
+- 推送普通功能分支：不会自动触发；请创建 PR 或在 Actions 页面手动运行；
+- Pull Request 到 `master`：执行四平台编译验证，但不发布；
+- Actions 页面 `Run workflow`：可选择分支手动编译；只有在 `master` 上运行
+  才会发布 Preview；
+- 推送正式 tag：发布正式 Release。
+
+Debian compatible 构建使用 `tools/build_linux_compatible.sh`，在
+manylinux 2.28 容器中完成 strip、ELF ABI 检查和 preload smoke test。该流程
+只在构建机运行，游戏服务器只需要安装 Release ZIP。
 
 # MOD作者兼容
 
 ## modinfo.lua
+
 在modinfo里面添加兼容性标记
 
 对于没有兼容标记的MOD,将会根据`SlowTailCall`或者`AutoDetectEncryptedMod`选项.
 
 对启发式检测到加密MOD的代码, 自动启用`堆栈兼容性`
+
 ```lua
 luajit_compatible = true --表示不依赖堆栈深度
 --或者
@@ -190,7 +439,9 @@ luajit_compatible = {
 ```
 
 ## 堆栈深度
+
 一般只有加密mod会严重依赖了堆栈深度, 比如说最常见的使用了
+
 ```lua
 local target_level = 2
 for i =0,255 do
@@ -210,7 +461,7 @@ end
 
 ## 直接启用游戏调试
 
-### 需要`staem_appid.txt`
+### 需要 `steam_appid.txt`
 
 ```json
 {
