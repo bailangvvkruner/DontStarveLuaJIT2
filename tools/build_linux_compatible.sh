@@ -17,7 +17,15 @@ docker run --rm \
     --env "GITHUB_ACTIONS=${GITHUB_ACTIONS:-}" \
     "$image" \
     bash -lc '
-        set -euo pipefail
+        set -Eeuo pipefail
+        report_error() {
+            local status=$?
+            printf "::error file=tools/build_linux_compatible.sh,title=Linux release build failed::exit=%s inner_line=%s command=%s\n" \
+                "$status" "${BASH_LINENO[0]}" "$BASH_COMMAND" >&2
+            exit "$status"
+        }
+        trap report_error ERR
+
         owner="$(stat -c "%u:%g" /workspace)"
         cleanup() {
             chown -R "$owner" /workspace/builds /workspace/Mod /workspace/.vcpkg-bincache 2>/dev/null || true
